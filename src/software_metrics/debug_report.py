@@ -82,5 +82,10 @@ def format_computation_steps(
             "a +1 (base) entry plus decision weights; the sum equals the "
             "reported complexity for that unit."
         )
+    elif metric_id == "coupling":
+        lines.append(
+            "  note: Each +1 is one resolved internal dependency edge "
+            "(distinct target file). Sums per unit are edge counts from that file."
+        )
 
     return "\n".join(lines)
