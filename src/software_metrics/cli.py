@@ -28,6 +28,14 @@ def main() -> None:
         required=True,
         help="Which metric to compute.",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "Print how each score is computed (decision points and contributions). "
+            "Supported for all implemented metrics."
+        ),
+    )
     args = parser.parse_args()
     root: Path = args.root.resolve()
     if not root.is_dir():
@@ -35,8 +43,18 @@ def main() -> None:
         sys.exit(2)
 
     if args.metric == "cyclomatic-complexity":
-        result = analyze_cyclomatic_project(root)
+        result = analyze_cyclomatic_project(root, debug=args.debug)
         print(result.summary_text())
+        if args.debug:
+            dbg = result.debug_text()
+            if dbg:
+                print()
+                print(dbg)
+            else:
+                print(
+                    "\n[debug] No computation trace "
+                    "(no functions found or empty project)."
+                )
         if result.files_with_errors:
             for path, msg in result.files_with_errors:
                 print(f"warning: {path}: {msg}", file=sys.stderr)

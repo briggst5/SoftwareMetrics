@@ -10,3 +10,4 @@ alwaysApply: true
 - **TypeScript** — use exhaustive handling for unions and enums (`switch` with `never` exhaustiveness or equivalent).
 - **Tests** — add or update tests when behavior is non-trivial or regression-prone.
 - **User-facing output** — metric reports should be stable, versioned, and include enough location context to act on findings.
+- **Debug traces** — new metrics should emit `software_metrics.debug_report.ComputationStep` rows when `--debug` is on so users can audit how scores are built (reuse `format_computation_steps` or extend it consistently).

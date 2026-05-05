@@ -37,7 +37,10 @@ From the repo root, with a virtual environment:
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e .
 software-metrics --root /path/to/project --metric cyclomatic-complexity
+software-metrics --root /path/to/project --metric cyclomatic-complexity --debug
 ```
+
+Use `--debug` to print how each function’s score is built (contributions per AST decision). Future metrics should emit the same `ComputationStep` rows via `software_metrics.debug_report`.
 
 `--metric cyclomatic-complexity` reports the **average McCabe-style cyclomatic complexity per function/method** (Kotlin `.kt`/`.kts`, TypeScript `.ts`/`.tsx`, Rust `.rs`). Ordinary call sites are not treated as decisions.
 
