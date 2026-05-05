@@ -87,5 +87,10 @@ def format_computation_steps(
             "  note: Each +1 is one resolved internal dependency edge "
             "(distinct target file). Sums per unit are edge counts from that file."
         )
+    elif metric_id == "cohesion":
+        lines.append(
+            "  note: Each row is one class / Rust impl unit; contribution is its "
+            "LCOM score (higher ⇒ lower cohesion)."
+        )
 
     return "\n".join(lines)

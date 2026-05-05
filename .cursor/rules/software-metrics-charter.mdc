@@ -11,7 +11,7 @@ Multi-language **static and hybrid** analysis: Kotlin, TypeScript + React, Rust.
 
 ## Metrics (product scope)
 
-- Cyclomatic complexity; coupling (fan-in/fan-out over internal imports); cohesion; duplication; composition vs inheritance ratio.
+- Cyclomatic complexity; coupling (fan-in/fan-out over internal imports); cohesion (average LCOM); duplication; composition vs inheritance ratio.
 - Naming conventions (language-idiomatic); SRP heuristics; method/class length.
 - **LLM-assisted** comment and documentation quality only when explicitly enabled (deterministic metrics stay reproducible without a model).
 

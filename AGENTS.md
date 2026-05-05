@@ -9,7 +9,7 @@ Build a **multi-language software metrics** tool. Initial targets: **Kotlin**, *
 | Area | Metrics / checks |
 |------|------------------|
 | Complexity | Cyclomatic complexity |
-| Structure | Coupling, cohesion |
+| Structure | Coupling, cohesion (average LCOM) |
 | Duplication | Code duplication |
 | OOP style | Ratio of composition over inheritance |
 | Conventions | Adherence to standard naming (per language / ecosystem) |
@@ -39,6 +39,7 @@ pip install -e .
 software-metrics --root /path/to/project --metric cyclomatic-complexity
 software-metrics --root /path/to/project --metric cyclomatic-complexity --debug
 software-metrics --root /path/to/project --metric coupling --debug
+software-metrics --root /path/to/project --metric cohesion --debug
 ```
 
 Use `--debug` to print how each score is built (cyclomatic: AST decisions; coupling: resolved internal import edges). Future metrics should emit the same `ComputationStep` rows via `software_metrics.debug_report`.
@@ -46,6 +47,8 @@ Use `--debug` to print how each score is built (cyclomatic: AST decisions; coupl
 `--metric cyclomatic-complexity` reports the **average McCabe-style cyclomatic complexity per function/method** (Kotlin `.kt`/`.kts`, TypeScript `.ts`/`.tsx`, Rust `.rs`). Ordinary call sites are not treated as decisions.
 
 `--metric coupling` treats each source file as a module and estimates **fan-in** / **fan-out** from **resolved project-internal imports** only (relative TS/TSX imports, Kotlin imports matched to file paths, Rust `crate::` / `super::` / `mod foo;` heuristics under `src/`). It reports average fan-in, average fan-out, their ratio, and the mean of per-file `fan_in/fan_out` over files with fan-out greater than zero.
+
+`--metric cohesion` reports **average LCOM** (Lack of Cohesion of Methods, CK-style) over Kotlin classes, TS/TSX classes, and Rust `impl Type` blocks paired with `struct Type` in the **same file**. Field use is inferred statically (identifiers plus `this.` / `self.` field access). Units need at least two instance methods.
 
 Run unit tests after installing dev dependencies:
 
