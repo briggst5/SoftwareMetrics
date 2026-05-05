@@ -180,7 +180,8 @@ def _decision_reason(node: Node, lang: str, weight: int) -> str:
 
     if lang == "kotlin":
         if t == "when_expression":
-            return f"when expression with {_kotlin_when_entries(node)} entr(y/ies)"
+            n = _kotlin_when_entries(node)
+            return f"when expression with {n} branch(es)"
         if t == "try_expression":
             ncatches = sum(1 for c in node.children if c.type == "catch_block")
             return f"try with {ncatches} catch block(s)"
