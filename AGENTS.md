@@ -48,6 +48,8 @@ pip install -e ".[dev]"
 pytest
 ```
 
+There is broad coverage for cyclomatic scoring (Rust / Kotlin / TS / TSX snippets, nested units vs closures/lambdas, filesystem skips, parse failures, and project aggregation). See `tests/test_cyclomatic.py` and `tests/test_cyclomatic_corners.py`.
+
 ## When implementing
 
 - Match existing patterns in the repo; avoid drive-by refactors.
