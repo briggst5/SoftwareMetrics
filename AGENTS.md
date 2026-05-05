@@ -41,6 +41,13 @@ software-metrics --root /path/to/project --metric cyclomatic-complexity
 
 `--metric cyclomatic-complexity` reports the **average McCabe-style cyclomatic complexity per function/method** (Kotlin `.kt`/`.kts`, TypeScript `.ts`/`.tsx`, Rust `.rs`). Ordinary call sites are not treated as decisions.
 
+Run unit tests after installing dev dependencies:
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
 ## When implementing
 
 - Match existing patterns in the repo; avoid drive-by refactors.

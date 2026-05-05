@@ -187,19 +187,29 @@ def _collect_functions(root: Node, lang: str) -> list[Node]:
     return out
 
 
-def _analyze_source(path: Path, lang: str) -> tuple[list[int], str | None]:
+def analyze_source_bytes(source: bytes, lang: str) -> tuple[list[int], str | None]:
+    """
+    Compute cyclomatic complexity for each function-like unit in ``source``.
+
+    ``lang`` must be one of: ``rust``, ``kotlin``, ``ts``, ``tsx``.
+    Returns ``([], error)`` when the parse tree has errors.
+    """
     parser = PARSERS[lang]
-    try:
-        text = path.read_bytes()
-    except OSError as e:
-        return [], str(e)
-    tree = parser.parse(text)
+    tree = parser.parse(source)
     if tree.root_node.has_error:
         return [], "parse tree has errors (skipped)"
     complexities: list[int] = []
     for fn in _collect_functions(tree.root_node, lang):
         complexities.append(cyclomatic_for_function(fn, lang))
     return complexities, None
+
+
+def _analyze_source(path: Path, lang: str) -> tuple[list[int], str | None]:
+    try:
+        text = path.read_bytes()
+    except OSError as e:
+        return [], str(e)
+    return analyze_source_bytes(text, lang)
 
 
 def iter_metric_files(root: Path) -> list[tuple[Path, str]]:
