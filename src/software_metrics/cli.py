@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from software_metrics.metrics.cohesion import analyze_cohesion_project
+from software_metrics.metrics.dit import analyze_dit_project
 from software_metrics.metrics.coupling import analyze_coupling_project
 from software_metrics.metrics.cyclomatic import analyze_cyclomatic_project
 
@@ -26,7 +27,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--metric",
-        choices=["cyclomatic-complexity", "coupling", "cohesion"],
+        choices=["cyclomatic-complexity", "coupling", "cohesion", "dit"],
         required=True,
         help="Which metric to compute.",
     )
@@ -91,6 +92,20 @@ def main() -> None:
                     "\n[debug] No computation trace "
                     "(no qualifying classes or impls)."
                 )
+        if result.files_with_errors:
+            for path, msg in result.files_with_errors:
+                print(f"warning: {path}: {msg}", file=sys.stderr)
+
+    elif args.metric == "dit":
+        result = analyze_dit_project(root, debug=args.debug)
+        print(result.summary_text())
+        if args.debug:
+            dbg = result.debug_text()
+            if dbg:
+                print()
+                print(dbg)
+            else:
+                print("\n[debug] No computation trace (no classes found).")
         if result.files_with_errors:
             for path, msg in result.files_with_errors:
                 print(f"warning: {path}: {msg}", file=sys.stderr)

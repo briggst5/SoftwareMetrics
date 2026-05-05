@@ -92,5 +92,9 @@ def format_computation_steps(
             "  note: Each row is one class / Rust impl unit; contribution is its "
             "LCOM score (higher ⇒ lower cohesion)."
         )
+    elif metric_id == "dit":
+        lines.append(
+            "  note: Contribution is DIT depth per class (extends / superclass only)."
+        )
 
     return "\n".join(lines)
