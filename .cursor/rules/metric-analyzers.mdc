@@ -1,0 +1,14 @@
+---
+description: Conventions when implementing or extending language analyzers and metrics
+globs: "**/*.{rs,kt,kts,ts,tsx}"
+alwaysApply: false
+---
+
+# Analyzer implementation
+
+- Add metrics through the shared pipeline: parse → extract symbols/edges → compute metric → emit structured findings.
+- Keep **Kotlin**, **TypeScript/React**, and **Rust** specifics in language modules; avoid cross-importing parser types across languages.
+- **Coupling/cohesion/duplication**: prefer graph or token/AST fingerprints with clear definitions (e.g. which edges count as coupling).
+- **Composition vs inheritance**: count `extends`/`:` / `impl Trait for` patterns per language; define “composition” signals (delegation, fields holding traits/interfaces) consistently.
+- **SRP and naming**: combine simple heuristics (size, fan-out, name smells) with optional human review; do not claim certainty without evidence.
+- **LLM doc assessment**: isolate behind an adapter; pass minimal context; never send secrets; surface model/version in reports.

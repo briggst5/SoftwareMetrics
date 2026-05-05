@@ -1,0 +1,21 @@
+---
+description: Core mission, metrics scope, and languages for SoftwareMetrics
+alwaysApply: true
+---
+
+# SoftwareMetrics charter
+
+## Goal
+
+Multi-language **static and hybrid** analysis: Kotlin, TypeScript + React, Rust.
+
+## Metrics (product scope)
+
+- Cyclomatic complexity; coupling; cohesion; duplication; composition vs inheritance ratio.
+- Naming conventions (language-idiomatic); SRP heuristics; method/class length.
+- **LLM-assisted** comment and documentation quality only when explicitly enabled (deterministic metrics stay reproducible without a model).
+
+## Engineering defaults
+
+- Shared **metric/reporting model**; per-language **analyzers** behind a narrow interface.
+- Prefer AST-based, testable logic; document thresholds and rule IDs for each metric.

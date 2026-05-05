@@ -1,0 +1,12 @@
+---
+description: Shared implementation style for this repository
+alwaysApply: true
+---
+
+# Implementation style
+
+- **Focused changes** — solve the stated task; avoid unrelated refactors.
+- **Imports** — keep imports at the top of files; avoid inline/dynamic imports except where the language ecosystem requires them.
+- **TypeScript** — use exhaustive handling for unions and enums (`switch` with `never` exhaustiveness or equivalent).
+- **Tests** — add or update tests when behavior is non-trivial or regression-prone.
+- **User-facing output** — metric reports should be stable, versioned, and include enough location context to act on findings.

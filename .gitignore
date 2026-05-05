@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Kotlin / JVM
+.gradle/
+build/
+out/
+*.iml
+.idea/
+
+# TypeScript / tooling
+dist/
+.next/
+.turbo/
+*.tsbuildinfo
+coverage/
+
+# Environment and secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
