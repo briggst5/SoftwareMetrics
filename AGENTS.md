@@ -29,6 +29,18 @@ Build a **multi-language software metrics** tool. Initial targets: **Kotlin**, *
 - Prefer `crates/` or `packages/` per language analyzer plus a shared core once the stack is chosen.
 - Keep configuration (thresholds, includes/excludes) separate from analyzer logic.
 
+## CLI (Python prototype)
+
+From the repo root, with a virtual environment:
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e .
+software-metrics --root /path/to/project --metric cyclomatic-complexity
+```
+
+`--metric cyclomatic-complexity` reports the **average McCabe-style cyclomatic complexity per function/method** (Kotlin `.kt`/`.kts`, TypeScript `.ts`/`.tsx`, Rust `.rs`). Ordinary call sites are not treated as decisions.
+
 ## When implementing
 
 - Match existing patterns in the repo; avoid drive-by refactors.

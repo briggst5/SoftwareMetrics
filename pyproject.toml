@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "software-metrics"
+version = "0.1.0"
+description = "Multi-language software metrics (cyclomatic complexity, …)"
+requires-python = ">=3.10"
+dependencies = [
+  "tree-sitter>=0.21",
+  "tree-sitter-rust>=0.24",
+  "tree-sitter-typescript>=0.23",
+  "tree-sitter-kotlin>=1.0",
+]
+
+[project.scripts]
+software-metrics = "software_metrics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
