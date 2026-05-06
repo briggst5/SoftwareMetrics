@@ -60,6 +60,9 @@ def test_project_debug_collects_multiple_files(tmp_path: Path) -> None:
     assert "file:" in text
     assert "unit: a" in text
     assert "unit: b" in text
+    # Per-file totals should be included for cyclomatic debug output.
+    assert "file cyclomatic: total=1 units=1 avg=1.0000" in text
+    assert "file cyclomatic: total=2 units=1 avg=2.0000" in text
 
 
 def test_debug_text_empty_when_no_steps() -> None:

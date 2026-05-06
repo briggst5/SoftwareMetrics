@@ -63,6 +63,8 @@ def format_computation_steps(
                 min(st.column for st in units_map[u]),
             ),
         )
+        file_total = 0
+        file_units = 0
         for unit in units_ordered:
             usteps = units_map[unit]
             lines.append(f"    unit: {unit}")
@@ -75,6 +77,15 @@ def format_computation_steps(
                     f"      +{st.contribution} @ {loc} [{st.ast_kind}]{suffix}"
                 )
             lines.append(f"      = {unit_total} (sum of contributions for this unit)")
+            if metric_id == "cyclomatic-complexity":
+                file_total += unit_total
+                file_units += 1
+
+        if metric_id == "cyclomatic-complexity" and file_units > 0:
+            file_avg = file_total / file_units
+            lines.append(
+                f"    file cyclomatic: total={file_total} units={file_units} avg={file_avg:.4f}"
+            )
 
     if metric_id == "cyclomatic-complexity":
         lines.append(
