@@ -214,7 +214,10 @@ def _resolve_ts_paths(
     src_dir = source_file.parent
 
     for spec, line, col in specs:
-        spec = spec.strip()
+        raw_spec = spec.strip()
+        # Some TS tooling/bundlers allow query/hash suffixes in specifiers
+        # (e.g. "@/asset?raw", "./x#fragment"). Strip these for path resolution.
+        spec = raw_spec.split("?", 1)[0].split("#", 1)[0]
         cand_bases: list[Path] = []
         if spec.startswith("."):
             cand_bases.append((src_dir / Path(spec)).resolve())
@@ -229,7 +232,7 @@ def _resolve_ts_paths(
             if hit is not None:
                 break
         if hit is not None:
-            resolved.append((_normalize_under(root, hit), line, col, spec))
+            resolved.append((_normalize_under(root, hit), line, col, raw_spec))
 
     return resolved
 

@@ -67,6 +67,55 @@ def test_ts_tsconfig_paths_alias_resolves_edge(tmp_path: Path) -> None:
     assert r.internal_edge_count == 1
 
 
+def test_ts_tsconfig_paths_alias_can_resolve_index_file(tmp_path: Path) -> None:
+    tsconfig = {"compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["./src/*"]}}}
+    tmp_path.joinpath("tsconfig.json").write_text(json.dumps(tsconfig), encoding="utf-8")
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "util").mkdir()
+    src.joinpath("util", "index.ts").write_text("export const u = 1;\n", encoding="utf-8")
+    src.joinpath("app.ts").write_text('import { u } from "@/util";\n', encoding="utf-8")
+
+    r = analyze_coupling_project(tmp_path)
+    assert r.files_count == 2
+    assert r.internal_edge_count == 1
+
+
+def test_ts_tsconfig_paths_uses_longest_matching_pattern(tmp_path: Path) -> None:
+    tsconfig = {
+        "compilerOptions": {
+            "baseUrl": ".",
+            "paths": {
+                "@/*": ["./src/*"],
+                "@lib/*": ["./lib/*"],
+            },
+        }
+    }
+    tmp_path.joinpath("tsconfig.json").write_text(json.dumps(tsconfig), encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "lib").mkdir()
+    tmp_path.joinpath("lib", "util.ts").write_text("export const u = 1;\n", encoding="utf-8")
+    tmp_path.joinpath("src", "app.ts").write_text('import { u } from "@lib/util";\n', encoding="utf-8")
+
+    r = analyze_coupling_project(tmp_path)
+    assert r.files_count == 2
+    assert r.internal_edge_count == 1
+
+
+def test_ts_import_specifier_query_suffix_is_ignored_for_resolution(tmp_path: Path) -> None:
+    tsconfig = {"compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["./src/*"]}}}
+    tmp_path.joinpath("tsconfig.json").write_text(json.dumps(tsconfig), encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    tmp_path.joinpath("src", "util.ts").write_text("export const u = 1;\n", encoding="utf-8")
+    tmp_path.joinpath("src", "app.ts").write_text('import { u } from "@/util?raw";\n', encoding="utf-8")
+
+    r = analyze_coupling_project(tmp_path, debug=True)
+    assert r.files_count == 2
+    assert r.internal_edge_count == 1
+    assert "`@/util?raw`" in r.debug_text()
+
+
 def test_coupling_summary_note_when_no_resolvable_edges(tmp_path: Path) -> None:
     tmp_path.joinpath("a.ts").write_text('import React from "react";\n', encoding="utf-8")
     tmp_path.joinpath("b.ts").write_text("export const x = 1;\n", encoding="utf-8")
