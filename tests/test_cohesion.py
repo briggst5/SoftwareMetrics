@@ -38,6 +38,27 @@ def test_ts_shared_field_zero_lcom(tmp_path: Path) -> None:
     assert r.total_lcom == 0
 
 
+def test_debug_lists_shared_methods_and_attributes(tmp_path: Path) -> None:
+    tmp_path.joinpath("c.ts").write_text(
+        "class C {\n"
+        "  a = 1;\n"
+        "  b = 2;\n"
+        "  u() { return this.a; }\n"
+        "  v() { return this.a + this.b; }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    r = analyze_cohesion_project(tmp_path, debug=True)
+    assert r.debug_steps is not None
+    txt = r.debug_text()
+    assert "[shared_methods]" in txt
+    assert "['u', 'v']" in txt
+    assert "[shared_attributes]" in txt
+    assert "['a']" in txt
+    assert "[method_pair_shared_fields]" in txt
+    assert "pair=(u,v) shared=['a']" in txt
+
+
 def test_rust_impl_lcom(tmp_path: Path) -> None:
     tmp_path.joinpath("lib.rs").write_text(
         "pub struct S { pub a: i32, pub b: i32 }\n"

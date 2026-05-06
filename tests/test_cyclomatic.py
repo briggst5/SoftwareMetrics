@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from software_metrics.discovery import EXTENSION_LANG
 from software_metrics.metrics.cyclomatic import (
     CyclomaticProjectResult,
-    EXTENSION_LANG,
     analyze_cyclomatic_project,
     analyze_source_bytes,
 )

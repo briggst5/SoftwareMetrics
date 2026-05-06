@@ -21,7 +21,8 @@ from pathlib import Path
 from tree_sitter import Node
 
 from software_metrics.debug_report import ComputationStep
-from software_metrics.metrics.cyclomatic import PARSERS, iter_metric_files
+from software_metrics.discovery import iter_metric_files
+from software_metrics.metrics.cyclomatic import PARSERS
 
 COHESION_METRIC_ID = "cohesion"
 
@@ -48,6 +49,45 @@ def _lcom_ck(method_field_sets: list[set[str]]) -> int:
             else:
                 disjoint += 1
     return max(0, disjoint - joint)
+
+
+@dataclass(frozen=True)
+class _UnitLcomDebug:
+    unit_name: str
+    line: int
+    col: int
+    lcom: int
+    instance_fields: set[str]
+    # CK-style: only methods that reference >=1 instance field
+    method_fields_used: dict[str, set[str]]
+
+
+def _shared_methods_and_attributes(
+    method_fields_used: dict[str, set[str]],
+) -> tuple[list[str], list[str], dict[tuple[str, str], list[str]]]:
+    """
+    Return (shared_methods, shared_attributes, shared_fields_by_pair).
+
+    - shared_methods: methods that share >=1 attribute with any other method
+    - shared_attributes: attributes used by >=2 methods (i.e., appear in any overlap)
+    - shared_fields_by_pair: (m1, m2) -> sorted shared field names (may be empty)
+    """
+    methods = sorted(method_fields_used.keys())
+    shared_methods: set[str] = set()
+    shared_attrs: set[str] = set()
+    shared_by_pair: dict[tuple[str, str], list[str]] = {}
+
+    for i, mi in enumerate(methods):
+        for mj in methods[i + 1 :]:
+            shared = method_fields_used[mi] & method_fields_used[mj]
+            shared_sorted = sorted(shared)
+            shared_by_pair[(mi, mj)] = shared_sorted
+            if shared_sorted:
+                shared_methods.add(mi)
+                shared_methods.add(mj)
+                shared_attrs.update(shared_sorted)
+
+    return (sorted(shared_methods), sorted(shared_attrs), shared_by_pair)
 
 
 def _ts_fields_used(method_body: Node, fields: set[str]) -> set[str]:
@@ -142,7 +182,9 @@ def _ts_method_bodies(class_node: Node) -> list[tuple[str, Node]]:
     return out
 
 
-def _lcom_ts_class(class_node: Node) -> tuple[int, str] | None:
+def _lcom_ts_class(
+    class_node: Node, *, debug: bool = False
+) -> tuple[int, str] | _UnitLcomDebug | None:
     body = class_node.child_by_field_name("body")
     if body is None:
         return None
@@ -152,10 +194,33 @@ def _lcom_ts_class(class_node: Node) -> tuple[int, str] | None:
         return None
     name_node = class_node.child_by_field_name("name")
     cname = name_node.text.decode(errors="replace") if name_node else "class"
-    sets = [_ts_fields_used(mb, fields) for _lbl, mb in methods]
     if not fields:
+        if debug:
+            line, col = _pos_1based(class_node)
+            return _UnitLcomDebug(
+                unit_name=cname,
+                line=line,
+                col=col,
+                lcom=0,
+                instance_fields=set(),
+                method_fields_used={},
+            )
         return (0, cname)
-    return (_lcom_ck(sets), cname)
+
+    used_by_method = {lbl: _ts_fields_used(mb, fields) for lbl, mb in methods}
+    used_by_method_nonempty = {m: s for m, s in used_by_method.items() if s}
+    lcom = _lcom_ck(list(used_by_method.values()))
+    if not debug:
+        return (lcom, cname)
+    line, col = _pos_1based(class_node)
+    return _UnitLcomDebug(
+        unit_name=cname,
+        line=line,
+        col=col,
+        lcom=lcom,
+        instance_fields=fields,
+        method_fields_used=used_by_method_nonempty,
+    )
 
 
 def _kotlin_class_body(class_node: Node) -> Node | None:
@@ -211,7 +276,9 @@ def _kotlin_method_bodies(class_node: Node) -> list[tuple[str, Node]]:
     return out
 
 
-def _lcom_kotlin_class(class_node: Node) -> tuple[int, str] | None:
+def _lcom_kotlin_class(
+    class_node: Node, *, debug: bool = False
+) -> tuple[int, str] | _UnitLcomDebug | None:
     fields = _kotlin_extract_fields(class_node)
     methods = _kotlin_method_bodies(class_node)
     if len(methods) < 2:
@@ -223,10 +290,33 @@ def _lcom_kotlin_class(class_node: Node) -> tuple[int, str] | None:
                 name_node = ch
                 break
     cname = name_node.text.decode(errors="replace") if name_node else "class"
-    sets = [_kotlin_fields_used(mb, fields) for _lbl, mb in methods]
     if not fields:
+        if debug:
+            line, col = _pos_1based(class_node)
+            return _UnitLcomDebug(
+                unit_name=cname,
+                line=line,
+                col=col,
+                lcom=0,
+                instance_fields=set(),
+                method_fields_used={},
+            )
         return (0, cname)
-    return (_lcom_ck(sets), cname)
+
+    used_by_method = {lbl: _kotlin_fields_used(mb, fields) for lbl, mb in methods}
+    used_by_method_nonempty = {m: s for m, s in used_by_method.items() if s}
+    lcom = _lcom_ck(list(used_by_method.values()))
+    if not debug:
+        return (lcom, cname)
+    line, col = _pos_1based(class_node)
+    return _UnitLcomDebug(
+        unit_name=cname,
+        line=line,
+        col=col,
+        lcom=lcom,
+        instance_fields=fields,
+        method_fields_used=used_by_method_nonempty,
+    )
 
 
 def _rust_struct_fields(struct_node: Node) -> set[str]:
@@ -291,7 +381,9 @@ def _rust_find_struct(root: Node, name: str) -> Node | None:
     return walk(root)
 
 
-def _lcom_rust_impl(impl_node: Node, tree_root: Node) -> tuple[int, str] | None:
+def _lcom_rust_impl(
+    impl_node: Node, tree_root: Node, *, debug: bool = False
+) -> tuple[int, str] | _UnitLcomDebug | None:
     tname = _rust_impl_type_name(impl_node)
     if not tname:
         return None
@@ -302,10 +394,33 @@ def _lcom_rust_impl(impl_node: Node, tree_root: Node) -> tuple[int, str] | None:
     methods = _rust_impl_methods(impl_node)
     if len(methods) < 2:
         return None
-    sets = [_rust_fields_used(mb, fields) for _lbl, mb in methods]
     if not fields:
+        if debug:
+            line, col = _pos_1based(impl_node)
+            return _UnitLcomDebug(
+                unit_name=tname,
+                line=line,
+                col=col,
+                lcom=0,
+                instance_fields=set(),
+                method_fields_used={},
+            )
         return (0, tname)
-    return (_lcom_ck(sets), tname)
+
+    used_by_method = {lbl: _rust_fields_used(mb, fields) for lbl, mb in methods}
+    used_by_method_nonempty = {m: s for m, s in used_by_method.items() if s}
+    lcom = _lcom_ck(list(used_by_method.values()))
+    if not debug:
+        return (lcom, tname)
+    line, col = _pos_1based(impl_node)
+    return _UnitLcomDebug(
+        unit_name=tname,
+        line=line,
+        col=col,
+        lcom=lcom,
+        instance_fields=fields,
+        method_fields_used=used_by_method_nonempty,
+    )
 
 
 @dataclass
@@ -348,7 +463,9 @@ class CohesionProjectResult:
         )
 
 
-def _analyze_file(path: Path, lang: str, root: Path) -> tuple[list[tuple[int, str, int, int]], str | None]:
+def _analyze_file(
+    path: Path, lang: str, root: Path, *, debug: bool = False
+) -> tuple[list[tuple[int, str, int, int]] | list[_UnitLcomDebug], str | None]:
     """
     Return list of (lcom, unit_name, line, col) and optional error.
     """
@@ -361,52 +478,62 @@ def _analyze_file(path: Path, lang: str, root: Path) -> tuple[list[tuple[int, st
     if tree.root_node.has_error:
         return [], "parse tree has errors (skipped)"
     rows: list[tuple[int, str, int, int]] = []
+    debug_rows: list[_UnitLcomDebug] = []
     root_node = tree.root_node
 
     if lang in ("ts", "tsx"):
 
         def walk_ts(n: Node) -> None:
             if n.type == "class_declaration":
-                r = _lcom_ts_class(n)
+                r = _lcom_ts_class(n, debug=debug)
                 if r is not None:
-                    lcom, cname = r
-                    line, col = _pos_1based(n)
-                    rows.append((lcom, cname, line, col))
+                    if isinstance(r, _UnitLcomDebug):
+                        debug_rows.append(r)
+                    else:
+                        lcom, cname = r
+                        line, col = _pos_1based(n)
+                        rows.append((lcom, cname, line, col))
             for ch in n.children:
                 walk_ts(ch)
 
         walk_ts(root_node)
-        return rows, None
+        return (debug_rows if debug else rows), None
 
     if lang == "kotlin":
 
         def walk_k(n: Node) -> None:
             if n.type == "class_declaration":
-                r = _lcom_kotlin_class(n)
+                r = _lcom_kotlin_class(n, debug=debug)
                 if r is not None:
-                    lcom, cname = r
-                    line, col = _pos_1based(n)
-                    rows.append((lcom, cname, line, col))
+                    if isinstance(r, _UnitLcomDebug):
+                        debug_rows.append(r)
+                    else:
+                        lcom, cname = r
+                        line, col = _pos_1based(n)
+                        rows.append((lcom, cname, line, col))
             for ch in n.children:
                 walk_k(ch)
 
         walk_k(root_node)
-        return rows, None
+        return (debug_rows if debug else rows), None
 
     if lang == "rust":
 
         def walk_r(n: Node) -> None:
             if n.type == "impl_item":
-                r = _lcom_rust_impl(n, root_node)
+                r = _lcom_rust_impl(n, root_node, debug=debug)
                 if r is not None:
-                    lcom, tname = r
-                    line, col = _pos_1based(n)
-                    rows.append((lcom, tname, line, col))
+                    if isinstance(r, _UnitLcomDebug):
+                        debug_rows.append(r)
+                    else:
+                        lcom, tname = r
+                        line, col = _pos_1based(n)
+                        rows.append((lcom, tname, line, col))
             for ch in n.children:
                 walk_r(ch)
 
         walk_r(root_node)
-        return rows, None
+        return (debug_rows if debug else rows), None
 
     return [], None
 
@@ -415,10 +542,11 @@ def analyze_cohesion_project(root: Path, *, debug: bool = False) -> CohesionProj
     root = root.resolve()
     errors: list[tuple[str, str]] = []
     all_rows: list[tuple[str, int, str, int, int]] = []
+    all_debug_rows: list[tuple[str, _UnitLcomDebug]] = []
     files_ok = 0
 
     for path, lang in iter_metric_files(root):
-        rows, err = _analyze_file(path, lang, root)
+        rows, err = _analyze_file(path, lang, root, debug=debug)
         if err:
             errors.append((str(path), err))
             continue
@@ -426,8 +554,16 @@ def analyze_cohesion_project(root: Path, *, debug: bool = False) -> CohesionProj
             files_ok += 1
             continue
         rel = _normalize_under(root, path)
-        for lcom, unit, line, col in rows:
-            all_rows.append((rel, lcom, unit, line, col))
+        if debug:
+            assert isinstance(rows, list)
+            for dr in rows:
+                assert isinstance(dr, _UnitLcomDebug)
+                all_rows.append((rel, dr.lcom, dr.unit_name, dr.line, dr.col))
+                all_debug_rows.append((rel, dr))
+        else:
+            assert isinstance(rows, list)
+            for lcom, unit, line, col in rows:
+                all_rows.append((rel, lcom, unit, line, col))
         files_ok += 1
 
     n_units = len(all_rows)
@@ -436,17 +572,76 @@ def analyze_cohesion_project(root: Path, *, debug: bool = False) -> CohesionProj
 
     dbg: list[ComputationStep] | None = [] if debug else None
     if debug and dbg is not None:
-        for rel, lcom, unit, line, col in sorted(all_rows, key=lambda x: (x[0], x[2])):
+        for rel, dr in sorted(all_debug_rows, key=lambda x: (x[0], x[1].unit_name)):
             apath = (root / Path(rel)).resolve()
+
+            inst_fields_sorted = sorted(dr.instance_fields)
+            for m in sorted(dr.method_fields_used.keys()):
+                used_sorted = sorted(dr.method_fields_used[m])
+                dbg.append(
+                    ComputationStep(
+                        COHESION_METRIC_ID,
+                        str(apath),
+                        dr.unit_name,
+                        dr.line,
+                        dr.col,
+                        "method_fields_used",
+                        0,
+                        f"method={m} uses={used_sorted} (instance_fields={inst_fields_sorted})",
+                    )
+                )
+
+            shared_methods, shared_attrs, shared_by_pair = _shared_methods_and_attributes(
+                dr.method_fields_used
+            )
+            for (m1, m2), shared_fields in sorted(shared_by_pair.items(), key=lambda kv: kv[0]):
+                dbg.append(
+                    ComputationStep(
+                        COHESION_METRIC_ID,
+                        str(apath),
+                        dr.unit_name,
+                        dr.line,
+                        dr.col,
+                        "method_pair_shared_fields",
+                        0,
+                        f"pair=({m1},{m2}) shared={shared_fields}",
+                    )
+                )
+
             dbg.append(
                 ComputationStep(
                     COHESION_METRIC_ID,
                     str(apath),
-                    unit,
-                    line,
-                    col,
+                    dr.unit_name,
+                    dr.line,
+                    dr.col,
+                    "shared_attributes",
+                    0,
+                    f"{shared_attrs}",
+                )
+            )
+            dbg.append(
+                ComputationStep(
+                    COHESION_METRIC_ID,
+                    str(apath),
+                    dr.unit_name,
+                    dr.line,
+                    dr.col,
+                    "shared_methods",
+                    0,
+                    f"{shared_methods}",
+                )
+            )
+
+            dbg.append(
+                ComputationStep(
+                    COHESION_METRIC_ID,
+                    str(apath),
+                    dr.unit_name,
+                    dr.line,
+                    dr.col,
                     "LCOM",
-                    lcom,
+                    dr.lcom,
                     "CK-style LCOM for this class/impl (max(0, disjoint_pairs - joint_pairs))",
                 )
             )

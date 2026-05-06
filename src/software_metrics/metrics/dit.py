@@ -18,7 +18,8 @@ from pathlib import Path
 from tree_sitter import Node
 
 from software_metrics.debug_report import ComputationStep
-from software_metrics.metrics.cyclomatic import PARSERS, iter_metric_files
+from software_metrics.discovery import iter_metric_files
+from software_metrics.metrics.cyclomatic import PARSERS
 
 DIT_METRIC_ID = "dit"
 

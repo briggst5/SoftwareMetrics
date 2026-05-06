@@ -17,9 +17,11 @@ from pathlib import Path
 import pytest
 
 from software_metrics.metrics.cyclomatic import (
-    SKIP_DIR_NAMES,
     analyze_cyclomatic_project,
     analyze_source_bytes,
+)
+from software_metrics.discovery import (
+    SKIP_DIR_NAMES,
     iter_metric_files,
 )
 

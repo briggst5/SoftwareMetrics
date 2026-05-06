@@ -8,12 +8,14 @@ are counted (stdlib, npm packages, and unresolved paths are ignored).
 
 Rust resolution handles ``crate::`` / ``super::``, ``mod foo;`` file siblings,
 and conservative ``use`` path→file mapping under ``src/``. TypeScript resolves
-relative ``./`` / ``../`` specifiers. Kotlin resolves ``import a.b.C`` by
-matching ``**/a/b/C.kt`` under the tree.
+relative ``./`` / ``../`` specifiers and, when ``tsconfig.json`` is present at
+the project root, ``compilerOptions.paths`` / ``baseUrl`` (same idea as ``tsc``).
+Kotlin resolves ``import a.b.C`` by matching ``**/a/b/C.kt`` under the tree.
 """
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,7 +23,8 @@ from pathlib import Path
 from tree_sitter import Node
 
 from software_metrics.debug_report import ComputationStep
-from software_metrics.metrics.cyclomatic import PARSERS, iter_metric_files
+from software_metrics.discovery import iter_metric_files
+from software_metrics.metrics.cyclomatic import PARSERS
 
 COUPLING_METRIC_ID = "coupling"
 
@@ -85,41 +88,146 @@ def _ts_collect_module_specs(root_node: Node) -> list[tuple[str, int, int]]:
     return out
 
 
+@dataclass(frozen=True)
+class TsPathMappings:
+    """compilerOptions.paths + baseUrl relative to the tsconfig file."""
+
+    base_url: Path
+    ordered_patterns: tuple[tuple[str, str], ...]
+
+
+def _load_ts_path_mappings(project_root: Path) -> TsPathMappings | None:
+    tsconfig: Path | None = None
+    for name in ("tsconfig.json", "jsconfig.json"):
+        cand = project_root / name
+        if cand.is_file():
+            tsconfig = cand
+            break
+    if tsconfig is None:
+        return None
+    try:
+        raw = json.loads(tsconfig.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    co = raw.get("compilerOptions")
+    if not isinstance(co, dict):
+        co = {}
+    tsconfig_dir = tsconfig.parent.resolve()
+    base_raw = co.get("baseUrl")
+    base_url = tsconfig_dir if base_raw is None else (tsconfig_dir / str(base_raw)).resolve()
+    paths_obj = co.get("paths")
+    if not isinstance(paths_obj, dict) or not paths_obj:
+        return None
+    pairs: list[tuple[str, str]] = []
+    for key, vals in paths_obj.items():
+        if not isinstance(key, str) or not isinstance(vals, list) or not vals:
+            continue
+        first = vals[0]
+        if not isinstance(first, str):
+            continue
+        pairs.append((key, first))
+    if not pairs:
+        return None
+    pairs.sort(key=lambda kv: len(kv[0]), reverse=True)
+    return TsPathMappings(base_url=base_url, ordered_patterns=tuple(pairs))
+
+
+def _subst_ts_paths_pattern(pattern: str, template: str, spec: str) -> str | None:
+    """If ``spec`` matches ``pattern`` (single ``*``), return relative path under baseUrl."""
+    if "*" not in pattern:
+        if spec == pattern:
+            t = template.strip()
+            while t.startswith("./"):
+                t = t[2:]
+            return t
+        return None
+    pre, suf = pattern.split("*", 1)
+    if not spec.startswith(pre):
+        return None
+    rest = spec[len(pre) :]
+    if suf:
+        if not rest.endswith(suf):
+            return None
+        middle = rest[: -len(suf)]
+    else:
+        middle = rest
+    if "*" not in template:
+        return None
+    tpre, tsuf = template.split("*", 1)
+    combined = f"{tpre}{middle}{tsuf}".replace("\\", "/")
+    while combined.startswith("./"):
+        combined = combined[2:]
+    return combined
+
+
+def _resolve_ts_path_alias(spec: str, cfg: TsPathMappings) -> Path | None:
+    matches: list[tuple[int, Path]] = []
+    for pattern, template in cfg.ordered_patterns:
+        rel = _subst_ts_paths_pattern(pattern, template, spec)
+        if rel is None:
+            continue
+        candidate = (cfg.base_url / Path(rel)).resolve()
+        matches.append((len(pattern), candidate))
+    if not matches:
+        return None
+    return max(matches, key=lambda x: x[0])[1]
+
+
+_TS_SOURCE_CANDIDATE_SUFFIXES = (
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+)
+
+
+def _ts_resolve_import_target(
+    cand_base: Path,
+    root: Path,
+    known_relpaths: set[str],
+) -> Path | None:
+    """Map a resolved path (no extension) to the first scanned source file that exists."""
+    candidates = [
+        cand_base,
+        *[cand_base.with_suffix(sfx) for sfx in _TS_SOURCE_CANDIDATE_SUFFIXES],
+        *[cand_base / f"index{sfx}" for sfx in _TS_SOURCE_CANDIDATE_SUFFIXES],
+    ]
+    for c in candidates:
+        try:
+            cr = c.resolve()
+            rel = _normalize_under(root, cr)
+            if rel in known_relpaths:
+                return cr
+        except ValueError:
+            continue
+    return None
+
+
 def _resolve_ts_paths(
     source_file: Path,
     root: Path,
     specs: list[tuple[str, int, int]],
     known_relpaths: set[str],
+    ts_paths: TsPathMappings | None,
 ) -> list[tuple[str, int, int, str]]:
     resolved: list[tuple[str, int, int, str]] = []
     src_dir = source_file.parent
 
     for spec, line, col in specs:
         spec = spec.strip()
-        if not spec.startswith("."):
-            continue
+        cand_bases: list[Path] = []
+        if spec.startswith("."):
+            cand_bases.append((src_dir / Path(spec)).resolve())
+        elif ts_paths is not None:
+            alias_hit = _resolve_ts_path_alias(spec, ts_paths)
+            if alias_hit is not None:
+                cand_bases.append(alias_hit)
 
-        cand_base = (src_dir / Path(spec)).resolve()
-        candidates = [
-            cand_base,
-            cand_base.with_suffix(".ts"),
-            cand_base.with_suffix(".tsx"),
-            cand_base.with_suffix(".js"),
-            cand_base.with_suffix(".jsx"),
-            cand_base / "index.ts",
-            cand_base / "index.tsx",
-            cand_base / "index.js",
-        ]
         hit: Path | None = None
-        for c in candidates:
-            try:
-                cr = c.resolve()
-                rel = _normalize_under(root, cr)
-                if rel in known_relpaths:
-                    hit = cr
-                    break
-            except ValueError:
-                continue
+        for cand_base in cand_bases:
+            hit = _ts_resolve_import_target(cand_base, root, known_relpaths)
+            if hit is not None:
+                break
         if hit is not None:
             resolved.append((_normalize_under(root, hit), line, col, spec))
 
@@ -326,11 +434,12 @@ def _collect_ts_edges_file(
     project_root: Path,
     lang: str,
     known_relpaths: set[str],
+    ts_paths: TsPathMappings | None,
 ) -> list[tuple[str, int, int, str]]:
     parser = PARSERS[lang]
     tree = parser.parse(source_file.read_bytes())
     specs = _ts_collect_module_specs(tree.root_node)
-    resolved = _resolve_ts_paths(source_file, project_root, specs, known_relpaths)
+    resolved = _resolve_ts_paths(source_file, project_root, specs, known_relpaths, ts_paths)
     return [(t, ln, c, f"`{rs}`") for t, ln, c, rs in resolved]
 
 
@@ -339,13 +448,14 @@ def _edges_for_file(
     lang: str,
     project_root: Path,
     known_relpaths: set[str],
+    ts_paths: TsPathMappings | None,
 ) -> list[tuple[str, int, int, str]]:
     if lang == "rust":
         return _collect_rust_edges(path, project_root, known_relpaths)
     if lang == "kotlin":
         return _collect_kotlin_edges(path, project_root, known_relpaths)
     if lang in ("ts", "tsx"):
-        return _collect_ts_edges_file(path, project_root, lang, known_relpaths)
+        return _collect_ts_edges_file(path, project_root, lang, known_relpaths, ts_paths)
     return []
 
 
@@ -367,16 +477,28 @@ class CouplingProjectResult:
         r_avg_s = f"{r_avg:.4f}" if r_avg is not None else "n/a"
         r_file = self.average_file_fan_in_fan_out_ratio
         r_file_s = f"{r_file:.4f}" if r_file is not None else "n/a"
-        return (
-            "Coupling (file-level internal dependencies)\n"
-            f"  Files analyzed: {self.files_count}\n"
-            f"  Resolved internal edges (distinct ordered pairs): {self.internal_edge_count}\n"
-            f"  Average fan-in:  {self.average_fan_in:.4f}\n"
-            f"  Average fan-out: {self.average_fan_out:.4f}\n"
-            f"  Ratio (avg fan-in / avg fan-out): {r_avg_s}\n"
-            f"  Average per-file ratio (mean of fan_in/fan_out over files with fan-out > 0): {r_file_s}\n"
-            f"  Files with fan-out 0: {self.files_with_fan_out_zero}"
-        )
+        lines = [
+            "Coupling (file-level internal dependencies)",
+            f"  Files analyzed: {self.files_count}",
+            f"  Resolved internal edges (distinct ordered pairs): {self.internal_edge_count}",
+            f"  Average fan-in:  {self.average_fan_in:.4f}",
+            f"  Average fan-out: {self.average_fan_out:.4f}",
+            f"  Ratio (avg fan-in / avg fan-out): {r_avg_s}",
+            (
+                "  Average per-file ratio "
+                "(mean of fan_in/fan_out over files with fan-out > 0): "
+                f"{r_file_s}"
+            ),
+            f"  Files with fan-out 0: {self.files_with_fan_out_zero}",
+        ]
+        if self.internal_edge_count == 0 and self.files_count > 0:
+            lines.append(
+                "  Note: Internal edges need resolvable project imports "
+                "(TS: ./ and ../; TS path aliases need root tsconfig.json paths; "
+                "Rust: crate::/super::; Kotlin: imports matching file paths). "
+                "npm/stdlib imports do not create edges."
+            )
+        return "\n".join(lines)
 
     def debug_text(self) -> str:
         from software_metrics.debug_report import format_computation_steps
@@ -392,6 +514,7 @@ class CouplingProjectResult:
 
 def analyze_coupling_project(root: Path, *, debug: bool = False) -> CouplingProjectResult:
     root = root.resolve()
+    ts_paths = _load_ts_path_mappings(root)
     files_meta = iter_metric_files(root)
     known_relpaths: set[str] = set()
     resolved_paths: list[tuple[Path, str]] = []
@@ -414,7 +537,7 @@ def analyze_coupling_project(root: Path, *, debug: bool = False) -> CouplingProj
     for path, lang in resolved_paths:
         rel_from = _normalize_under(root, path)
         try:
-            raw_edges = _edges_for_file(path, lang, root, known_relpaths)
+            raw_edges = _edges_for_file(path, lang, root, known_relpaths, ts_paths)
         except OSError as e:
             errors.append((str(path), str(e)))
             continue

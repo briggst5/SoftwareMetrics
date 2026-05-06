@@ -11,44 +11,17 @@ Note: ordinary function *calls* are not decision points and are not counted.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from tree_sitter import Language, Node, Parser
 
 from software_metrics.debug_report import ComputationStep, format_computation_steps
+from software_metrics.discovery import iter_metric_files
 
 import tree_sitter_kotlin as tsk
 import tree_sitter_rust as tsr
 import tree_sitter_typescript as tst
-
-SKIP_DIR_NAMES = frozenset(
-    {
-        ".git",
-        ".svn",
-        ".hg",
-        "node_modules",
-        "target",
-        "dist",
-        "build",
-        ".gradle",
-        ".venv",
-        "__pycache__",
-        ".idea",
-        ".turbo",
-        ".next",
-        "venv",
-    },
-)
-
-EXTENSION_LANG: dict[str, str] = {
-    ".rs": "rust",
-    ".kt": "kotlin",
-    ".kts": "kotlin",
-    ".ts": "ts",
-    ".tsx": "tsx",
-}
 
 
 def _language_parsers() -> dict[str, Parser]:
@@ -363,20 +336,6 @@ def _analyze_source(
     return analyze_source_bytes_detailed(text, lang, str(path), debug=debug)
 
 
-def iter_metric_files(root: Path) -> list[tuple[Path, str]]:
-    files: list[tuple[Path, str]] = []
-    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIR_NAMES]
-        base = Path(dirpath)
-        for name in filenames:
-            p = base / name
-            ext = p.suffix.lower()
-            lang = EXTENSION_LANG.get(ext)
-            if lang:
-                files.append((p, lang))
-    return files
-
-
 @dataclass
 class CyclomaticProjectResult:
     root: Path
@@ -415,6 +374,7 @@ class CyclomaticProjectResult:
 
 
 def analyze_cyclomatic_project(root: Path, *, debug: bool = False) -> CyclomaticProjectResult:
+    root = root.resolve()
     total_c = 0
     n_methods = 0
     files_scanned = 0
