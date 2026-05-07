@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from software_metrics import __version__
 from software_metrics.metrics.cohesion import analyze_cohesion_project
 from software_metrics.metrics.dit import analyze_dit_project
 from software_metrics.metrics.coupling import analyze_coupling_project
@@ -18,6 +19,11 @@ def main() -> None:
             "Measure software metrics for Kotlin, TypeScript/React, and Rust sources "
             "under a project root."
         ),
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"software-metrics {__version__}",
     )
     parser.add_argument(
         "--root",
